@@ -52,10 +52,11 @@ bool lock = true;
 float delock;
 
 /*
- * MAX time between delock and apogeeTime. If process exceeds this time,
- * timeout will occur and release procedure will be activated.
+ * MAX time in milliseconds between delock and apogeeTime. 
+ * If process exceeds this time, timeout will occur and release procedure 
+ * will be activated.
  */
-int timeoutLimit = 30;
+int timeoutLimit = 30000;
 
 /*
  * Until the systems are ready for launching, it provides infinity loop.
@@ -64,7 +65,51 @@ int timeoutLimit = 30;
 bool isReadyToLaunch = false;
 
 /*
- * Xbee Pro S2C is configured to work in 9600 baud.
+ * After releasing procedure, rocket will start to descend and making 
+ * a calculation for releasing will not be needed. So it will be 
+ * changed to true after releasing happened.
+ */
+bool isDescending = false;
+
+/*
+ * Providing safety for unexpected accelerometer errors in a very short 
+ * time after launching due to high velocity, rocket need to 
+ * provide the stage1 and stage2 conditions. After stage2 rocket will
+ * reach over 2000 meters and systems work fine.
+ */
+bool stage1 = false;
+bool stage2 = false;
+
+/*
+ * This is the calculation to find the apogee point by using acceleration info.
+ * Accelerometer measures three axis acceleration. If the square of each axis's
+ * acceleration is taken and added each other, it gives a stabil positive number 
+ * unless depending on it's orientation but the accelerometer is not moving.
+ * On the apogee point, it will be zero immediately because it will start 
+ * doing free fall.
+ */
+double accCalculation;
+
+/*
+ * If the rocket reaches to apogee, isApogee will be true.
+ */
+bool isApogee = false;
+
+/*
+ * If releasing system will not work on a restricted time interval, isTimeout
+ * will be true and releasing procedure will start working immediately.
+ * This is unwanted situation.
+ */
+bool isTimeout = false;
+
+/*
+ * If releasing procedure happens, isReleased will be true and this procedure
+ * will not happen again.
+ */
+bool isReleased = false;
+
+/*
+ * Xbee Pro S2C is configured to work in 9600 baud rate.
  */
 static const uint32_t XBEEBaud = 9600;
 
@@ -90,6 +135,7 @@ void setup() {
       } else {
         isReadyToLaunch = true;
         xbee.begin(XBEEBaud);
+        mma.setRange(MMA8451_RANGE_2_G);
         /*
          * When all the systems are ready for flying,
          * buzzer beeps two times.
@@ -107,12 +153,29 @@ void loop() {
    */
   float pressure = lps25h.readPressureMillibars();
   float altitude = lps25h.pressureToAltitudeMeters(pressure);
+  
+  // MMA8451 starts to get value;
+  mma.read();
+  
+  /* 
+   *  For getting three axis acceleration, sensor event must be created.
+   */
+  sensors_event_t event; 
+  mma.getEvent(&event);
 
+  /*
+   * Taking square of each acceleration on different orientation
+   * and adding them to each other.
+   */
+  accCalculation = (event.acceleration.x * event.acceleration.x) +
+                   (event.acceleration.y * event.acceleration.y) +
+                   (event.acceleration.z * event.acceleration.z);
+  Serial.println(accCalculation);
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
    * If delock was saved in EEPROM before, we take it from there.
    * If it is not, then we assign the current millisecond to delock and
-   * save the delock to EEPROM.
+   * save it to EEPROM.
    * This is necessary for safety.
    */
   if(lock) {
@@ -125,7 +188,41 @@ void loop() {
       }
     }
   } else {
-    
+    // TODO: Create a package to send ground station.
+    // TODO: Prepare the information to save the microSD card.
+    if(isDescending) {
+      if(altitude < 50) {
+        // TODO: Activate buzzer.
+      }
+    } else {
+      if(altitude > 1000 && altitude < 2000) {
+        stage1 = true;
+      }
+      if(altitude > 2000 && altitude < 3000) {
+        stage2 = true;
+      }
+      if(stage1 && stage2) {
+        if(accCalculation <= 100 && accCalculation >= 0) {
+          isApogee = true;
+        }
+      }
+      if(millis() - delock > timeoutLimit) {
+        isTimeout = true;
+      }
+      if((stage1 && stage2 && isApogee)||isTimeout) {
+        if(!isReleased) {
+          // TODO: Create a releaseProcedure().
+          isReleased = true;
+          isDescending = true;
+        } 
+        /*
+         * For guarantee that isDescending is true.
+         */
+        else {
+          isDescending = true;
+        }
+      }
+    }
   }
   delay(100);
 }
