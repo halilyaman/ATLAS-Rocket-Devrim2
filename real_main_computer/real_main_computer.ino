@@ -40,7 +40,7 @@ int buzzer = 3;
  * It sends special packets to ground station with 
  * high safety protocol.
  */
-SoftwareSerial xbee(11, 10);
+SoftwareSerial xbee(11, 10); // (RXPin, TXPin)
 
 /* 
  *  For keeping system safe, all the system will be activated after launcing.
@@ -113,6 +113,16 @@ bool isTimeout = false;
  * will not happen again.
  */
 bool isReleased = false;
+
+/*
+ * When the rocket is about 50 meters, isLanded will be true;
+ */
+bool isLanded = false;
+
+/*
+ * Increases by one for each packet.
+ */
+int packetCounter = 0;
 
 /*
  * Xbee Pro S2C is configured to work in 9600 baud rate.
@@ -193,6 +203,7 @@ void loop() {
    * This is necessary for safety.
    */
   if(lock) {
+    Serial.println(altitude);
     if(altitude >= 50) {
       lock = false;
       EEPROM.get(0, delock);
@@ -202,7 +213,53 @@ void loop() {
       }
     }
   } else {
-    // TODO: Create a package to send ground station.
+    /*
+     * These  comma seperated values are sended to the ground station.
+     * Message starts with '?' character and ends with '!' character.
+     * Package Content: [time, team_id, package_number,latitude, 
+     * longtitude, altitude, [status]]
+     * 
+     * Time, latitude and longtitude values are taken from GPS module.
+     */
+    packetCounter++;
+    xbee.print("?");
+    xbee.print("Time");
+    xbee.print(",");
+    xbee.print("ATLAS");
+    xbee.print(",");
+    xbee.print(packetCounter);
+    xbee.print(",");
+    xbee.print("Latitude");
+    xbee.print(",");
+    xbee.print("Longtitude");
+    xbee.print(",");
+    xbee.print(altitude);
+    if(stage1) {
+      xbee.print(",");
+      xbee.print("Stage1");
+    }
+    if(stage2) {
+      xbee.print(",");
+      xbee.print("Stage2");
+    }
+    if(isApogee) {
+      xbee.print(",");
+      xbee.print("Apogee");
+    }
+    if(isDescending) {
+      xbee.print(",");
+      xbee.print("Descending");
+    }
+    if(isTimeout) {
+      xbee.print(",");
+      xbee.print("Time out");
+    }
+    if(isLanded) {
+      xbee.print(",");
+      xbee.print("Landed");
+    }
+    xbee.print("\n");
+    xbee.print("!");
     // TODO: Prepare the information to save the microSD card.
     /*
      * isDescending is initially false. This condition will be active after 
@@ -211,6 +268,7 @@ void loop() {
     if(isDescending) {
       if(altitude < 50) {
         // TODO: Activate buzzer.
+        isLanded = true;
       }
     } 
     /*
