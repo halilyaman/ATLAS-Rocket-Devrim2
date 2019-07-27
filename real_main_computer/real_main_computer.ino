@@ -20,13 +20,19 @@
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 
-// Creating LPS25H object which allows us to get altitude info.
+/* 
+ * Creating LPS25H object which allows us to get altitude info.
+ */
 LPS lps25h;
 
-// Creating MMA8451 object which allows us to get three axis acceleration.
+/* 
+ * Creating MMA8451 object which allows us to get three axis acceleration.
+ */
 Adafruit_MMA8451 mma = Adafruit_MMA8451();
 
-// Buzzer is used for getting sound respond about system's status.
+/* 
+ * Buzzer is used for getting sound respond about system's status.
+ */
 int buzzer = 3;
 
 /* 
@@ -121,16 +127,22 @@ void setup() {
   while(!isReadyToLaunch) {
     /*
      * Activation and setup of LPS25H which calculates the altitude,
-     * pressure and temperature 
+     * pressure and temperature.
      */
     if(!lps25h.init()) {
-      // If the LPS25H can not be activated. Buzzer beeps one seconds.
+      /* 
+       * If the LPS25H can not be activated. Buzzer beeps one seconds.
+       */
       longBeep(1000);
     } else {
       lps25h.enableDefault();
-      // Activation of MMA8451 which measures the acceleration
+      /* 
+       * Activation of MMA8451 which measures the acceleration.
+       */
       if(!mma.begin()){
-        // If the accelerometer can not be activated. Buzzer beeps two seconds.
+        /* 
+         * If the accelerometer can not be activated. Buzzer beeps two seconds.
+         */
         longBeep(2000);
       } else {
         isReadyToLaunch = true;
@@ -154,7 +166,9 @@ void loop() {
   float pressure = lps25h.readPressureMillibars();
   float altitude = lps25h.pressureToAltitudeMeters(pressure);
   
-  // MMA8451 starts to get value;
+  /* 
+   * MMA8451 starts to get value.
+   */
   mma.read();
   
   /* 
@@ -190,11 +204,19 @@ void loop() {
   } else {
     // TODO: Create a package to send ground station.
     // TODO: Prepare the information to save the microSD card.
+    /*
+     * isDescending is initially false. This condition will be active after 
+     * apogee point was reached.
+     */
     if(isDescending) {
       if(altitude < 50) {
         // TODO: Activate buzzer.
       }
-    } else {
+    } 
+    /*
+     * This part of code is active while rocket is going up.
+     */
+    else {
       if(altitude > 1000 && altitude < 2000) {
         stage1 = true;
       }
@@ -206,6 +228,9 @@ void loop() {
           isApogee = true;
         }
       }
+      /*
+       * If this condition is true, releasing procedure works anyway.
+       */
       if(millis() - delock > timeoutLimit) {
         isTimeout = true;
       }
@@ -244,6 +269,10 @@ void longBeep(int millisecond) {
   delay(500);
 }
 
+/*
+ * Before launching, this method will be called once on the last statement in 
+ * setup function. So make sure that there is nothing in EEPROM.
+ */
 void clearEEPROM() {
   for(int i = 0; i < EEPROM.length(); i++) {
     EEPROM.write(i, '\0');
