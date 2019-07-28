@@ -33,7 +33,7 @@ Adafruit_MMA8451 mma = Adafruit_MMA8451();
 /* 
  * Buzzer is used for getting sound respond about system's status.
  */
-int buzzer = 3;
+const int buzzer = 3;
 
 /* 
  * xbee is used to communicate with ground station.
@@ -62,7 +62,7 @@ float delock;
  * If process exceeds this time, timeout will occur and release procedure 
  * will be activated.
  */
-int timeoutLimit = 30000;
+const int timeoutLimit = 30000;
 
 /*
  * Until the systems are ready for launching, it provides infinity loop.
@@ -125,6 +125,16 @@ bool isLanded = false;
 int packetCounter = 0;
 
 /*
+ * The value which makes the altitude zero.
+ */
+const double altitudeToSeaLevel = 65;
+
+/*
+ * (Relative Altitude = altitude measured from sensor - altitudeToSeaLevel)
+ */
+double relativeAltitude;
+
+/*
  * Xbee Pro S2C is configured to work in 9600 baud rate.
  */
 static const uint32_t XBEEBaud = 9600;
@@ -175,6 +185,11 @@ void loop() {
    */
   float pressure = lps25h.readPressureMillibars();
   float altitude = lps25h.pressureToAltitudeMeters(pressure);
+  /*
+   * altitudeToSeaLevel will be updated according to current location.
+   * relativeAltitude must be zero on ground.
+   */
+  relativeAltitude = altitude - altitudeToSeaLevel;
   
   /* 
    * MMA8451 starts to get value.
@@ -194,7 +209,6 @@ void loop() {
   accCalculation = (event.acceleration.x * event.acceleration.x) +
                    (event.acceleration.y * event.acceleration.y) +
                    (event.acceleration.z * event.acceleration.z);
-  Serial.println(accCalculation);
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
    * If delock was saved in EEPROM before, we take it from there.
@@ -203,8 +217,7 @@ void loop() {
    * This is necessary for safety.
    */
   if(lock) {
-    Serial.println(altitude);
-    if(altitude >= 50) {
+    if(relativeAltitude >= 50) {
       lock = false;
       EEPROM.get(0, delock);
       if(delock == 0) {
@@ -233,40 +246,62 @@ void loop() {
     xbee.print(",");
     xbee.print("Longtitude");
     xbee.print(",");
-    xbee.print(altitude);
+    xbee.print(relativeAltitude);
+    xbee.print(",");
+    xbee.print("[");
     if(stage1) {
       xbee.print(",");
       xbee.print("Stage1");
+    } else {
+      xbee.print("*");
     }
     if(stage2) {
       xbee.print(",");
       xbee.print("Stage2");
+    } else {
+      xbee.print(",");
+      xbee.print("*");
     }
     if(isApogee) {
       xbee.print(",");
       xbee.print("Apogee");
+    } else {
+      xbee.print(",");
+      xbee.print("*");
     }
     if(isDescending) {
       xbee.print(",");
       xbee.print("Descending");
+    } else {
+      xbee.print(",");
+      xbee.print("*");
     }
     if(isTimeout) {
       xbee.print(",");
       xbee.print("Time out");
+    } else {
+      xbee.print(",");
+      xbee.print("*");
     }
     if(isLanded) {
       xbee.print(",");
       xbee.print("Landed");
+    } else {
+      xbee.print(",");
+      xbee.print("*");
     }
+    xbee.print("]");
     xbee.print("\n");
     xbee.print("!");
+    
+    
     // TODO: Prepare the information to save the microSD card.
     /*
      * isDescending is initially false. This condition will be active after 
      * apogee point was reached.
      */
     if(isDescending) {
-      if(altitude < 50) {
+      if(relativeAltitude < 50) {
         // TODO: Activate buzzer.
         isLanded = true;
       }
@@ -275,10 +310,10 @@ void loop() {
      * This part of code is active while rocket is going up.
      */
     else {
-      if(altitude > 1000 && altitude < 2000) {
+      if(relativeAltitude > 1000 && relativeAltitude < 2000) {
         stage1 = true;
       }
-      if(altitude > 2000 && altitude < 3000) {
+      if(relativeAltitude > 2000 && relativeAltitude < 3000) {
         stage2 = true;
       }
       if(stage1 && stage2) {
@@ -307,7 +342,7 @@ void loop() {
       }
     }
   }
-  delay(100);
+  delay(1);
 }
 
 void beepTwice() {
