@@ -205,6 +205,7 @@ void loop() {
    */
   float pressure = lps25h.readPressureMillibars();
   float altitude = lps25h.pressureToAltitudeMeters(pressure);
+  
   /*
    * altitudeToSeaLevel will be updated according to current location.
    * relativeAltitude must be zero on ground.
@@ -322,7 +323,7 @@ void loop() {
      */
     if(isDescending) {
       if(relativeAltitude < 50) {
-        // TODO: Activate buzzer.
+        longBeep(1000);
         isLanded = true;
       }
     } 
