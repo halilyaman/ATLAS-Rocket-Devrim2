@@ -11,6 +11,8 @@
  * EEPROM library is used because delock time is kept in there. If there is 
  * sudden power failure, system starts from beginning and takes the delock
  * time from EEPROM.
+ * 
+ * TinyGPS++ library is used for getting location from GPS module.
  */
 
 #include <LPS.h>
@@ -19,6 +21,7 @@
 #include <Adafruit_Sensor.h>
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
+#include <TinyGPS++.h>
 
 /* 
  * Creating LPS25H object which allows us to get altitude info.
@@ -30,17 +33,28 @@ LPS lps25h;
  */
 Adafruit_MMA8451 mma = Adafruit_MMA8451();
 
+/*
+ * Creating gps object which allows us to get location info.
+ */
+TinyGPSPlus gps;
+
 /* 
  * Buzzer is used for getting sound respond about system's status.
  */
-const int buzzer = 3;
+const int buzzer = 8;
 
 /* 
  * xbee is used to communicate with ground station.
  * It sends special packets to ground station with 
  * high safety protocol.
  */
-SoftwareSerial xbee(11, 10); // (RXPin, TXPin)
+SoftwareSerial xbee(12, 11); // (RXPin, TXPin)
+
+/*
+ * gps_serial is necessery for making communication between arduino and
+ * gps module.
+ */
+SoftwareSerial gps_serial(4, 3); // (RXPin, TXPin)
 
 /* 
  *  For keeping system safe, all the system will be activated after launcing.
@@ -122,12 +136,12 @@ bool isLanded = false;
 /*
  * Increases by one for each packet.
  */
-int packetCounter = 0;
+unsigned int packetCounter = 0;
 
 /*
  * The value which makes the altitude zero.
  */
-const double altitudeToSeaLevel = 65;
+const double altitudeToSeaLevel = 0;
 
 /*
  * (Relative Altitude = altitude measured from sensor - altitudeToSeaLevel)
@@ -138,6 +152,11 @@ double relativeAltitude;
  * Xbee Pro S2C is configured to work in 9600 baud rate.
  */
 static const uint32_t XBEEBaud = 9600;
+
+/*
+ * GPS is working in same baud rate with Xbee Pro S2C.
+ */
+static const uint32_t GPSBaud = 9600;
 
 void setup() {
   Serial.begin(115200);
@@ -167,6 +186,7 @@ void setup() {
       } else {
         isReadyToLaunch = true;
         xbee.begin(XBEEBaud);
+        gps_serial.begin(GPSBaud);
         mma.setRange(MMA8451_RANGE_2_G);
         /*
          * When all the systems are ready for flying,
@@ -209,6 +229,7 @@ void loop() {
   accCalculation = (event.acceleration.x * event.acceleration.x) +
                    (event.acceleration.y * event.acceleration.y) +
                    (event.acceleration.z * event.acceleration.z);
+  
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
    * If delock was saved in EEPROM before, we take it from there.
@@ -229,22 +250,21 @@ void loop() {
     /*
      * These  comma seperated values are sended to the ground station.
      * Message starts with '?' character and ends with '!' character.
-     * Package Content: [time, team_id, package_number,latitude, 
+     * Package Content: [team_id, package_number,latitude, 
      * longtitude, altitude, [status]]
      * 
      * Time, latitude and longtitude values are taken from GPS module.
      */
     packetCounter++;
+    gps_serial.listen();
     xbee.print("?");
-    xbee.print("Time");
-    xbee.print(",");
     xbee.print("ATLAS");
     xbee.print(",");
     xbee.print(packetCounter);
     xbee.print(",");
-    xbee.print("Latitude");
+    xbee.print(gps.location.lat(), 6);
     xbee.print(",");
-    xbee.print("Longtitude");
+    xbee.print(gps.location.lng(), 6);
     xbee.print(",");
     xbee.print(relativeAltitude);
     xbee.print(",");
@@ -294,8 +314,8 @@ void loop() {
     xbee.print("\n");
     xbee.print("!");
     
-    
     // TODO: Prepare the information to save the microSD card.
+    
     /*
      * isDescending is initially false. This condition will be active after 
      * apogee point was reached.
@@ -342,7 +362,7 @@ void loop() {
       }
     }
   }
-  delay(1);
+  smartDelay(100);
 }
 
 void beepTwice() {
@@ -360,6 +380,19 @@ void longBeep(int millisecond) {
   delay(millisecond);
   digitalWrite(buzzer, LOW);
   delay(500);
+}
+
+/*
+ * smartDelay is used because of GPS working.
+ */
+static void smartDelay(unsigned long ms)
+{
+  unsigned long start = millis();
+  do 
+  {
+    while (gps_serial.available())
+      gps.encode(gps_serial.read());
+  } while (millis() - start < ms);
 }
 
 /*
