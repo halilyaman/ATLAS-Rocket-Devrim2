@@ -13,6 +13,8 @@
  * time from EEPROM.
  * 
  * TinyGPS++ library is used for getting location from GPS module.
+ * 
+ * SD and SPI libraries are used to log data to microSD card from sensors.
  */
 
 #include <LPS.h>
@@ -22,6 +24,8 @@
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 #include <TinyGPS++.h>
+#include <SPI.h>
+#include <SD.h>
 
 /* 
  * Creating LPS25H object which allows us to get altitude info.
@@ -43,12 +47,17 @@ TinyGPSPlus gps;
  */
 const int buzzer = 8;
 
+/*
+ * microSD is used to log data from sensors.
+ */
+const int microSD = 2;
+
 /* 
  * xbee is used to communicate with ground station.
  * It sends special packets to ground station with 
  * high safety protocol.
  */
-SoftwareSerial xbee(12, 11); // (RXPin, TXPin)
+SoftwareSerial xbee(10, 9); // (RXPin, TXPin)
 
 /*
  * gps_serial is necessery for making communication between arduino and
@@ -108,7 +117,7 @@ bool stage2 = false;
  * On the apogee point, it will be zero immediately because it will start 
  * doing free fall.
  */
-double accCalculation;
+double AccXYZ;
 
 /*
  * If the rocket reaches to apogee, isApogee will be true.
@@ -136,7 +145,7 @@ bool isLanded = false;
 /*
  * Increases by one for each packet.
  */
-unsigned int packetCounter = 0;
+unsigned int packageCounter = 0;
 
 /*
  * The value which makes the altitude zero.
@@ -157,6 +166,10 @@ static const uint32_t XBEEBaud = 9600;
  * GPS is working in same baud rate with Xbee Pro S2C.
  */
 static const uint32_t GPSBaud = 9600;
+
+File dataFile;
+float pressure,altitude;
+String dataString;
 
 void setup() {
   Serial.begin(115200);
@@ -187,24 +200,29 @@ void setup() {
         isReadyToLaunch = true;
         xbee.begin(XBEEBaud);
         gps_serial.begin(GPSBaud);
+        SD.begin(microSD);
         mma.setRange(MMA8451_RANGE_2_G);
         /*
          * When all the systems are ready for flying,
          * buzzer beeps two times.
          */
         beepTwice();
-        xbee.println("?All systems are ready for launching.\n!");
+        xbee.println(F("?All systems are ready for launching.\n!"));
       }
     }
   }
+  dataFile = SD.open(F("datalog.txt"), FILE_WRITE);
+  dataFile.println(F("time,id,packageNumber,latitude,longtitude,altitude,AccXYZ,[status]"));
+  dataFile.println(F("------------------------------------------------------------------"));
+  dataFile.close();
 }
 
 void loop() {
   /*
    * For getting altitude in meters, first we need to get pressure in millibars.
    */
-  float pressure = lps25h.readPressureMillibars();
-  float altitude = lps25h.pressureToAltitudeMeters(pressure);
+  pressure = lps25h.readPressureMillibars();
+  altitude = lps25h.pressureToAltitudeMeters(pressure);
   
   /*
    * altitudeToSeaLevel will be updated according to current location.
@@ -227,9 +245,10 @@ void loop() {
    * Taking square of each acceleration on different orientation
    * and adding them to each other.
    */
-  accCalculation = (event.acceleration.x * event.acceleration.x) +
+  AccXYZ = (event.acceleration.x * event.acceleration.x) +
                    (event.acceleration.y * event.acceleration.y) +
-                   (event.acceleration.z * event.acceleration.z);
+                   (event.acceleration.z * event.acceleration.z); 
+  Serial.println(AccXYZ);
   
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
@@ -256,66 +275,129 @@ void loop() {
      * 
      * Time, latitude and longtitude values are taken from GPS module.
      */
-    packetCounter++;
+    packageCounter++;
     gps_serial.listen();
-    xbee.print("?");
-    xbee.print("ATLAS");
-    xbee.print(",");
-    xbee.print(packetCounter);
-    xbee.print(",");
+    xbee.print(F("?"));
+    xbee.print(F("DEVRİM-K1"));
+    xbee.print(F(","));
+    xbee.print(packageCounter);
+    xbee.print(F(","));
     xbee.print(gps.location.lat(), 6);
-    xbee.print(",");
+    xbee.print(F(","));
     xbee.print(gps.location.lng(), 6);
-    xbee.print(",");
+    xbee.print(F(","));
     xbee.print(relativeAltitude);
-    xbee.print(",");
-    xbee.print("[");
+    xbee.print(F(","));
+    xbee.print(F("["));
     if(stage1) {
-      xbee.print(",");
-      xbee.print("Stage1");
+      xbee.print(F(","));
+      xbee.print(F("Stage1"));
     } else {
-      xbee.print("*");
+      xbee.print(F("*"));
     }
     if(stage2) {
-      xbee.print(",");
-      xbee.print("Stage2");
+      xbee.print(F(","));
+      xbee.print(F("Stage2"));
     } else {
-      xbee.print(",");
-      xbee.print("*");
+      xbee.print(F(","));
+      xbee.print(F("*"));
     }
     if(isApogee) {
-      xbee.print(",");
-      xbee.print("Apogee");
+      xbee.print(F(","));
+      xbee.print(F("Apogee"));
     } else {
-      xbee.print(",");
-      xbee.print("*");
+      xbee.print(F(","));
+      xbee.print(F("*"));
     }
     if(isDescending) {
-      xbee.print(",");
-      xbee.print("Descending");
+      xbee.print(F(","));
+      xbee.print(F("Descending"));
     } else {
-      xbee.print(",");
-      xbee.print("*");
+      xbee.print(F(","));
+      xbee.print(F("*"));
     }
     if(isTimeout) {
-      xbee.print(",");
-      xbee.print("Time out");
+      xbee.print(F(","));
+      xbee.print(F("Time out"));
     } else {
-      xbee.print(",");
-      xbee.print("*");
+      xbee.print(F(","));
+      xbee.print(F("*"));
     }
     if(isLanded) {
-      xbee.print(",");
-      xbee.print("Landed");
+      xbee.print(F(","));
+      xbee.print(F("Landed"));
     } else {
-      xbee.print(",");
-      xbee.print("*");
+      xbee.print(F(","));
+      xbee.print(F("*"));
     }
-    xbee.print("]");
-    xbee.print("\n");
-    xbee.print("!");
+    xbee.print(F("]"));
+    xbee.print(F("\n"));
+    xbee.print(F("!"));
     
-    // TODO: Prepare the information to save the microSD card.
+    /*
+     * Data logging
+     */
+    dataString = F("");
+
+    dataString += F("DEVRİM-K1");
+    dataString += F(",");
+    dataString += String(packageCounter);
+    dataString += F(",");
+    dataString += String(gps.location.lat(), 6);
+    dataString += F(",");
+    dataString += String(gps.location.lng(), 6);
+    dataString += F(",");
+    dataString += String(relativeAltitude);
+    dataString += F(",");
+    dataString += String(AccXYZ);
+    dataString += F(",");
+    dataString += F("[");
+    if(stage1) {
+      dataString += F(",");
+      dataString += F("Stage1");
+    } else {
+      dataString += F("*");
+    }
+    if(stage2) {
+      dataString += F(",");
+      dataString += F("Stage2");
+    } else {
+      dataString += F(",");
+      dataString += F("*");
+    }
+    if(isApogee) {
+      dataString += F(",");
+      dataString += F("Apogee");
+    } else {
+      dataString += F(",");
+      dataString += F("*");
+    }
+    if(isDescending) {
+      dataString += F(",");
+      dataString += F("Descending");
+    } else {
+      dataString += F(",");
+      dataString += F("*");
+    }
+    if(isTimeout) {
+      dataString += F(",");
+      dataString += F("Timeout");
+    } else {
+      dataString += F(",");
+      dataString += F("*");
+    }
+    if(isLanded) {
+      dataString += F(",");
+      dataString += F("Landed");
+    } else {
+      dataString += F(",");
+      dataString += F("*");
+    }
+    dataString += F("]");
+    
+    dataFile = SD.open(F("datalog.txt"), FILE_WRITE);
+    dataFile.println(dataString);
+    dataFile.close();
     
     /*
      * isDescending is initially false. This condition will be active after 
@@ -338,7 +420,7 @@ void loop() {
         stage2 = true;
       }
       if(stage1 && stage2) {
-        if(accCalculation <= 100 && accCalculation >= 0) {
+        if(AccXYZ <= 100 && AccXYZ >= 0) {
           isApogee = true;
         }
       }
@@ -386,9 +468,10 @@ void longBeep(int millisecond) {
 /*
  * smartDelay is used because of GPS working.
  */
+unsigned long start;
 static void smartDelay(unsigned long ms)
 {
-  unsigned long start = millis();
+  start = millis();
   do 
   {
     while (gps_serial.available())
@@ -400,8 +483,9 @@ static void smartDelay(unsigned long ms)
  * Before launching, this method will be called once on the last statement in 
  * setup function. So make sure that there is nothing in EEPROM.
  */
+int i;
 void clearEEPROM() {
-  for(int i = 0; i < EEPROM.length(); i++) {
+  for(i = 0; i < EEPROM.length(); i++) {
     EEPROM.write(i, '\0');
   }
 }
