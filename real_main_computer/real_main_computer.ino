@@ -52,6 +52,11 @@ const int buzzer = 8;
  */
 const int microSD = 2;
 
+/*
+ * Relay for DC motor.
+ */
+const int relay = 5;
+
 /* 
  * xbee is used to communicate with ground station.
  * It sends special packets to ground station with 
@@ -198,10 +203,14 @@ void setup() {
         longBeep(2000);
       } else {
         isReadyToLaunch = true;
+        
         xbee.begin(XBEEBaud);
         gps_serial.begin(GPSBaud);
         SD.begin(microSD);
         mma.setRange(MMA8451_RANGE_2_G);
+        
+        pinMode(relay, OUTPUT);
+        digitalWrite(relay, HIGH);
         /*
          * When all the systems are ready for flying,
          * buzzer beeps two times.
@@ -428,11 +437,12 @@ void loop() {
        * If this condition is true, releasing procedure works anyway.
        */
       if(millis() - delock > timeoutLimit) {
-        isTimeout = true;
+        if(!isReleased)
+         isTimeout = true;
       }
       if((stage1 && stage2 && isApogee)||isTimeout) {
         if(!isReleased) {
-          // TODO: Create a releaseProcedure().
+          releaseProcedure();
           isReleased = true;
           isDescending = true;
         } 
@@ -446,6 +456,12 @@ void loop() {
     }
   }
   smartDelay(100);
+}
+
+void releaseProcedure() {
+  digitalWrite(relay, LOW);
+  delay(2000);
+  digitalWrite(relay, HIGH);
 }
 
 void beepTwice() {
