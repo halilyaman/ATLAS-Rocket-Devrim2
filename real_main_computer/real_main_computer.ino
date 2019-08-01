@@ -68,7 +68,7 @@ SoftwareSerial xbee(10, 9); // (RXPin, TXPin)
  * gps_serial is necessery for making communication between arduino and
  * gps module.
  */
-SoftwareSerial gps_serial(4, 3); // (RXPin, TXPin)
+SoftwareSerial gps_serial(3, 4); // (RXPin, TXPin)
 
 /* 
  *  For keeping system safe, all the system will be activated after launcing.
