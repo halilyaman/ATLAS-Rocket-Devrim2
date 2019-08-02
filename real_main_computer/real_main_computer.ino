@@ -70,6 +70,11 @@ SoftwareSerial xbee(10, 9); // (RXPin, TXPin)
  */
 SoftwareSerial gps_serial(3, 4); // (RXPin, TXPin)
 
+/*
+ * For communicating DEVRİM-K2.
+ */
+SoftwareSerial devrim_k2(6, 7); // (RXPin, TXPin)
+
 /* 
  *  For keeping system safe, all the system will be activated after launcing.
  *  To provide this, lock boolean value is initialized to true.
@@ -175,9 +180,11 @@ static const uint32_t GPSBaud = 9600;
 File dataFile;
 float pressure,altitude;
 String dataString;
+char message;
 
 void setup() {
   Serial.begin(115200);
+  devrim_k2.begin(57600);
   pinMode(buzzer, OUTPUT);
   Wire.begin();
 
@@ -255,9 +262,8 @@ void loop() {
    * and adding them to each other.
    */
   AccXYZ = (event.acceleration.x * event.acceleration.x) +
-                   (event.acceleration.y * event.acceleration.y) +
-                   (event.acceleration.z * event.acceleration.z); 
-  Serial.println(AccXYZ);
+           (event.acceleration.y * event.acceleration.y) +
+           (event.acceleration.z * event.acceleration.z);
   
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
@@ -277,151 +283,35 @@ void loop() {
     }
   } else {
     /*
-     * These  comma seperated values are sended to the ground station.
-     * Message starts with '?' character and ends with '!' character.
-     * Package Content: [team_id, package_number,latitude, 
-     * longtitude, altitude, [status]]
-     * 
-     * Time, latitude and longtitude values are taken from GPS module.
+     * Sending data to ground station
      */
-    packageCounter++;
-    gps_serial.listen();
-    xbee.print(F("?"));
-    xbee.print(F("DEVRİM-K1"));
-    xbee.print(F(","));
-    xbee.print(packageCounter);
-    xbee.print(F(","));
-    xbee.print(gps.location.lat(), 6);
-    xbee.print(F(","));
-    xbee.print(gps.location.lng(), 6);
-    xbee.print(F(","));
-    xbee.print(relativeAltitude);
-    xbee.print(F(","));
-    xbee.print(F("["));
-    if(stage1) {
-      xbee.print(F(","));
-      xbee.print(F("Stage1"));
-    } else {
-      xbee.print(F("*"));
-    }
-    if(stage2) {
-      xbee.print(F(","));
-      xbee.print(F("Stage2"));
-    } else {
-      xbee.print(F(","));
-      xbee.print(F("*"));
-    }
-    if(isApogee) {
-      xbee.print(F(","));
-      xbee.print(F("Apogee"));
-    } else {
-      xbee.print(F(","));
-      xbee.print(F("*"));
-    }
-    if(isDescending) {
-      xbee.print(F(","));
-      xbee.print(F("Descending"));
-    } else {
-      xbee.print(F(","));
-      xbee.print(F("*"));
-    }
-    if(isTimeout) {
-      xbee.print(F(","));
-      xbee.print(F("Time out"));
-    } else {
-      xbee.print(F(","));
-      xbee.print(F("*"));
-    }
-    if(isLanded) {
-      xbee.print(F(","));
-      xbee.print(F("Landed"));
-    } else {
-      xbee.print(F(","));
-      xbee.print(F("*"));
-    }
-    xbee.print(F("]"));
-    xbee.print(F("\n"));
-    xbee.print(F("!"));
+    sendData();
     
     /*
      * Data logging
      */
-    dataString = F("");
-
-    dataString += F("DEVRİM-K1");
-    dataString += F(",");
-    dataString += String(packageCounter);
-    dataString += F(",");
-    dataString += String(gps.location.lat(), 6);
-    dataString += F(",");
-    dataString += String(gps.location.lng(), 6);
-    dataString += F(",");
-    dataString += String(relativeAltitude);
-    dataString += F(",");
-    dataString += String(AccXYZ);
-    dataString += F(",");
-    dataString += F("[");
-    if(stage1) {
-      dataString += F(",");
-      dataString += F("Stage1");
-    } else {
-      dataString += F("*");
-    }
-    if(stage2) {
-      dataString += F(",");
-      dataString += F("Stage2");
-    } else {
-      dataString += F(",");
-      dataString += F("*");
-    }
-    if(isApogee) {
-      dataString += F(",");
-      dataString += F("Apogee");
-    } else {
-      dataString += F(",");
-      dataString += F("*");
-    }
-    if(isDescending) {
-      dataString += F(",");
-      dataString += F("Descending");
-    } else {
-      dataString += F(",");
-      dataString += F("*");
-    }
-    if(isTimeout) {
-      dataString += F(",");
-      dataString += F("Timeout");
-    } else {
-      dataString += F(",");
-      dataString += F("*");
-    }
-    if(isLanded) {
-      dataString += F(",");
-      dataString += F("Landed");
-    } else {
-      dataString += F(",");
-      dataString += F("*");
-    }
-    dataString += F("]");
-    
-    dataFile = SD.open(F("datalog.txt"), FILE_WRITE);
-    dataFile.println(dataString);
-    dataFile.close();
+    logData();
     
     /*
      * isDescending is initially false. This condition will be active after 
      * apogee point was reached.
      */
     if(isDescending) {
+      /*
+       * Check landing
+       */
       if(relativeAltitude < 50) {
         longBeep(1000);
         isLanded = true;
       }
-    } 
-    /*
-     * This part of code is active while rocket is going up.
-     */
-    else {
+    } else {
+      /*
+       * This part of code is active while rocket is going up.
+       */
+
+      /*
+       * Releasing algorithm
+       */
       if(relativeAltitude > 1000 && relativeAltitude < 2000) {
         stage1 = true;
       }
@@ -437,19 +327,23 @@ void loop() {
        * If this condition is true, releasing procedure works anyway.
        */
       if(millis() - delock > timeoutLimit) {
-        if(!isReleased)
-         isTimeout = true;
+        if(!isReleased) {
+          isTimeout = true;
+        }
       }
+      
+      /*
+       * Control point for releasing parachute
+       */
       if((stage1 && stage2 && isApogee)||isTimeout) {
         if(!isReleased) {
           releaseProcedure();
           isReleased = true;
           isDescending = true;
-        } 
-        /*
-         * For guarantee that isDescending is true.
-         */
-        else {
+        } else { 
+          /*
+           * For guarantee that isDescending is true.
+           */
           isDescending = true;
         }
       }
@@ -462,6 +356,139 @@ void releaseProcedure() {
   digitalWrite(relay, LOW);
   delay(2000);
   digitalWrite(relay, HIGH);
+}
+
+
+/*
+ * These  comma seperated values are sended to the ground station.
+ * Message starts with '?' character and ends with '!' character.
+ * Package Content: [team_id, package_number,latitude, 
+ * longtitude, altitude, [status]]
+ * 
+ * Time, latitude and longtitude values are taken from GPS module.
+ */
+void sendData() {
+  packageCounter++;
+  gps_serial.listen();
+  xbee.print(F("?"));
+  xbee.print(F("DEVRİM-K1"));
+  xbee.print(F(","));
+  xbee.print(packageCounter);
+  xbee.print(F(","));
+  xbee.print(gps.location.lat(), 6);
+  xbee.print(F(","));
+  xbee.print(gps.location.lng(), 6);
+  xbee.print(F(","));
+  xbee.print(relativeAltitude);
+  xbee.print(F(","));
+  xbee.print(F("["));
+  if(stage1) {
+    xbee.print(F(","));
+    xbee.print(F("Stage1"));
+  } else {
+    xbee.print(F("*"));
+  }
+  if(stage2) {
+    xbee.print(F(","));
+    xbee.print(F("Stage2"));
+  } else {
+    xbee.print(F(","));
+    xbee.print(F("*"));
+  }
+  if(isApogee) {
+    xbee.print(F(","));
+    xbee.print(F("Apogee"));
+  } else {
+    xbee.print(F(","));
+    xbee.print(F("*"));
+  }
+  if(isDescending) {
+    xbee.print(F(","));
+    xbee.print(F("Descending"));
+  } else {
+    xbee.print(F(","));
+    xbee.print(F("*"));
+  }
+  if(isTimeout) {
+    xbee.print(F(","));
+    xbee.print(F("Time out"));
+  } else {
+    xbee.print(F(","));
+    xbee.print(F("*"));
+  }
+  if(isLanded) {
+    xbee.print(F(","));
+    xbee.print(F("Landed"));
+  } else {
+    xbee.print(F(","));
+    xbee.print(F("*"));
+  }
+  xbee.print(F("]"));
+  xbee.print(F("\n"));
+  xbee.print(F("!"));
+}
+
+void logData() {
+  dataString = F("");
+  dataString += F("DEVRİM-K1");
+  dataString += F(",");
+  dataString += String(packageCounter);
+  dataString += F(",");
+  dataString += String(gps.location.lat(), 6);
+  dataString += F(",");
+  dataString += String(gps.location.lng(), 6);
+  dataString += F(",");
+  dataString += String(relativeAltitude);
+  dataString += F(",");
+  dataString += String(AccXYZ);
+  dataString += F(",");
+  dataString += F("[");
+  if(stage1) {
+    dataString += F(",");
+    dataString += F("Stage1");
+  } else {
+    dataString += F("*");
+  }
+  if(stage2) {
+    dataString += F(",");
+    dataString += F("Stage2");
+  } else {
+    dataString += F(",");
+    dataString += F("*");
+  }
+  if(isApogee) {
+    dataString += F(",");
+    dataString += F("Apogee");
+  } else {
+    dataString += F(",");
+    dataString += F("*");
+  }
+  if(isDescending) {
+    dataString += F(",");
+    dataString += F("Descending");
+  } else {
+    dataString += F(",");
+    dataString += F("*");
+  }
+  if(isTimeout) {
+    dataString += F(",");
+    dataString += F("Timeout");
+  } else {
+    dataString += F(",");
+    dataString += F("*");
+  }
+  if(isLanded) {
+    dataString += F(",");
+    dataString += F("Landed");
+  } else {
+    dataString += F(",");
+    dataString += F("*");
+  }
+  dataString += F("]");
+  
+  dataFile = SD.open(F("datalog.txt"), FILE_WRITE);
+  dataFile.println(dataString);
+  dataFile.close();
 }
 
 void beepTwice() {
