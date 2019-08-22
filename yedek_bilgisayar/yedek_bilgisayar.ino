@@ -17,19 +17,21 @@ bool isSystemOn = false;
 bool isProcessDone = false;
 
 void setup() {
-  devrim_k1.begin(57600);
-  pinMode(relay, OUTPUT);
-  digitalWrite(relay, HIGH);
   Wire.begin();
-  Serial.begin(9600);
-  if(!lps25h.init()) {
-    while(1);
-  } else {
+  Serial.begin(57600);
+  devrim_k1.begin(4800);
+  if(lps25h.init()) {
     lps25h.enableDefault();
+    delay(1000);
+    pinMode(relay, OUTPUT);
+    digitalWrite(relay, HIGH);
   }
 }
 
 void loop() {
+  if(isProcessDone) {
+    devrim_k1.print(1);
+  }
   if(!isProcessDone) {
     pressure = lps25h.readPressureMillibars();
     altitude = lps25h.pressureToAltitudeMeters(pressure);

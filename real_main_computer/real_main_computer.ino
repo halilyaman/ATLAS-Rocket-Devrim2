@@ -62,7 +62,7 @@ const int relay = 5;
  * It sends special packets to ground station with 
  * high safety protocol.
  */
-SoftwareSerial xbee(10, 9); // (RXPin, TXPin)
+SoftwareSerial xbee(9, 10); // (RXPin, TXPin)
 
 /*
  * gps_serial is necessery for making communication between arduino and
@@ -160,7 +160,7 @@ unsigned int packageCounter = 0;
 /*
  * The value which makes the altitude zero.
  */
-const double altitudeToSeaLevel = 0;
+const double altitudeToSeaLevel = 46;
 
 /*
  * (Relative Altitude = altitude measured from sensor - altitudeToSeaLevel)
@@ -181,10 +181,11 @@ File dataFile;
 float pressure,altitude;
 String dataString;
 char message;
+sensors_event_t event;
 
 void setup() {
   Serial.begin(115200);
-  devrim_k2.begin(57600);
+  devrim_k2.begin(4800);
   pinMode(buzzer, OUTPUT);
   Wire.begin();
 
@@ -222,6 +223,7 @@ void setup() {
          * When all the systems are ready for flying,
          * buzzer beeps two times.
          */
+        clearEEPROM();
         beepTwice();
         xbee.println(F("?All systems are ready for launching.\n!"));
       }
@@ -245,7 +247,7 @@ void loop() {
    * relativeAltitude must be zero on ground.
    */
   relativeAltitude = altitude - altitudeToSeaLevel;
-  
+
   /* 
    * MMA8451 starts to get value.
    */
@@ -254,7 +256,6 @@ void loop() {
   /* 
    *  For getting three axis acceleration, sensor event must be created.
    */
-  sensors_event_t event; 
   mma.getEvent(&event);
 
   /*
@@ -264,7 +265,7 @@ void loop() {
   AccXYZ = (event.acceleration.x * event.acceleration.x) +
            (event.acceleration.y * event.acceleration.y) +
            (event.acceleration.z * event.acceleration.z);
-  
+           
   /*
    * When the altitude is 50m, lock will be false and delock time is kept.
    * If delock was saved in EEPROM before, we take it from there.
@@ -282,6 +283,15 @@ void loop() {
       }
     }
   } else {
+    devrim_k2.listen();
+    delay(1);
+    if(devrim_k2.available()) {
+      message = devrim_k2.read();
+      if(message != '\0') {
+        isReleased = true;
+        isDescending = true;
+      }
+    }
     /*
      * Sending data to ground station
      */
@@ -367,6 +377,7 @@ void releaseProcedure() {
  * 
  * Time, latitude and longtitude values are taken from GPS module.
  */
+
 void sendData() {
   packageCounter++;
   gps_serial.listen();
