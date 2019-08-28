@@ -16,7 +16,7 @@ void loop() {
     if(val == '?') {
       isMessage = true;
     }
-    
+
     if(val == '!') {
       isMessage = false;
     }
@@ -24,6 +24,5 @@ void loop() {
     if(isMessage) {
       if(val != '?') Serial.print(val);
     }
-    
   }
 }

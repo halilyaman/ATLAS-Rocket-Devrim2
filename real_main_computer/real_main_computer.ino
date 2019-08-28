@@ -22,7 +22,6 @@
 #include <Adafruit_MMA8451.h>
 #include <Adafruit_Sensor.h>
 #include <SoftwareSerial.h>
-#include <EEPROM.h>
 #include <TinyGPS++.h>
 #include <SPI.h>
 #include <SD.h>
