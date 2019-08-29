@@ -194,17 +194,18 @@ DateTime now;
 sensors_event_t event;
 
 void setup() {
+  delay(1000);
   servo1Setup();
   Wire.begin();
   Serial.begin(57600);
   pinMode(buzzer, OUTPUT);
 
-  while (!isReadyToLaunch) {
+  while(!isReadyToLaunch) {
     /*
        Activation and setup of LPS25H which calculates the altitude,
        pressure and temperature.
     */
-    if (!lps25h.init()) {
+    if(!lps25h.init()) {
       /*
          If the LPS25H can not be activated. Buzzer beeps one seconds.
       */
@@ -215,14 +216,12 @@ void setup() {
       /*
          Activation of MMA8451 which measures the acceleration.
       */
-      if (!mma.begin()) {
+      if(!mma.begin()) {
         /*
            If the accelerometer can not be activated. Buzzer beeps two seconds.
         */
         longBeep(2000);
       } else {
-        isReadyToLaunch = true;
-
         xbee.begin(XBEEBaud);
         gps_serial.begin(GPSBaud);
         SD.begin(microSD);
@@ -230,6 +229,7 @@ void setup() {
         rtc.isrunning();
         mma.setRange(MMA8451_RANGE_2_G);
         
+        isReadyToLaunch = true;
         /*
            When all the systems are ready for flying,
            buzzer beeps two times.
@@ -245,14 +245,11 @@ void setup() {
   dataFile.close();
 }
 
-void loop() {
-  
-  signal = analogRead(signalPin);
-  if(signal > 1000) {
-    isDescending = true;
-  }
+void loop() { 
+  /*
+     Getting time at the moment.
+   */
   now = rtc.now();
-  
   
   /*
      For getting altitude in meters, first we need to get pressure in millibars.
@@ -301,22 +298,27 @@ void loop() {
      save it to EEPROM.
      This is necessary for safety.
   */
-  if (lock) {
-    if (relativeAltitude >= 200) {
+  if(lock) {
+    if(relativeAltitude >= 200) {
       lock = false;
       delock = millis();
     }
   } else {
     /*
-       If DEVRİM_K2 activates the release system. It sends '1' to DEVRİM_K1
-       and DEVRİM_K2 won't activate it again.
+       If DEVRİM_K2 activates the release system, it sends a signal to DEVRİM_K1
+       and DEVRİM_K1 won't activate it again.
      */
-    
+    if(stage1 && stage2) {
+      signal = analogRead(signalPin);
+      if(signal > 1000) {
+        isDescending = true;
+      }
+    }
     /*
        isDescending is initially false. This condition will be active after
        apogee point is reached.
     */
-    if (isDescending) {
+    if(isDescending) {
       /*
         Main parachute releasing mechanism.
        */
@@ -329,7 +331,7 @@ void loop() {
         /*
           Checking landing
         */
-        if (relativeAltitude < 50) {
+        if(relativeAltitude < 50) {
           longBeep(1000);
           isLanded = true;
         }
@@ -342,22 +344,22 @@ void loop() {
       /*
          Releasing algorithm
       */
-      if (relativeAltitude > 1000 && relativeAltitude < 2000) {
+      if(relativeAltitude > 1000 && relativeAltitude < 2000) {
         stage1 = true;
       }
-      if (relativeAltitude > 2000 && relativeAltitude < 3000) {
+      if(relativeAltitude > 2000 && relativeAltitude < 3000) {
         stage2 = true;
       }
-      if (stage1 && stage2) {
-        if (AccXYZ <= 100 && AccXYZ >= 0) {
+      if(stage1 && stage2) {
+        if(AccXYZ <= 100 && AccXYZ >= 0) {
           isApogee = true;
         }
       }
       /*
          If this condition is true, releasing procedure works anyway.
       */
-      if (millis() - delock > timeoutLimit) {
-        if (!isReleased) {
+      if(millis() - delock > timeoutLimit) {
+        if(!isReleased) {
           isTimeout = true;
         }
       }
@@ -365,8 +367,8 @@ void loop() {
       /*
          Control point for releasing parachute
       */
-      if ((stage1 && stage2 && isApogee) || isTimeout) {
-        if (!isReleased) {
+      if((stage1 && stage2 && isApogee) || isTimeout) {
+        if(!isReleased) {
           releaseDragParachute();
           isReleased = true;
           isDescending = true;
@@ -557,7 +559,7 @@ void longBeep(int millisecond) {
 }
 
 /*
-   smartDelay is used because of GPS working.
+  smartDelay is used because of GPS working.
 */
 unsigned long start;
 static void smartDelay(unsigned long ms)

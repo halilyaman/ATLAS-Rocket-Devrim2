@@ -15,6 +15,7 @@ double tempAltitude;
 
 bool isSystemOn = false;
 bool isProcessDone = false;
+bool isMainParachuteReleased = false;
 
 void setup() {
   Wire.begin();
@@ -30,6 +31,15 @@ void setup() {
 void loop() {
   if(isProcessDone) {
     digitalWrite(signalPin, HIGH);
+
+    pressure = lps25h.readPressureMillibars();
+    altitude = lps25h.pressureToAltitudeMeters(pressure);
+    relativeAltitude = altitude - altitudeToSeaLevel;
+    
+    if(relativeAltitude <= 600 && !isMainParachuteReleased) {
+      releaseMainParachute();
+      isMainParachuteReleased = true;
+    }
   }
   
   if(!isProcessDone) {
@@ -59,12 +69,17 @@ void calculateAltitudeDifference() {
   relativeAltitude = altitude - altitudeToSeaLevel;
   
   if(relativeAltitude - tempAltitude < -1) {
-    releaseProcedure();
+    releaseDragParachute();
     isSystemOn = false;
     isProcessDone = true;
   }
   
 }
 
-void releaseProcedure() {
+void releaseDragParachute() {
+  
+}
+
+void releaseMainParachute() {
+  
 }
